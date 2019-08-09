@@ -15,6 +15,8 @@ class Channels extends React.Component {
         channelsRef: firebase.database().ref('channels'),
         messagesRef: firebase.database().ref('messages'),
         typingRef: firebase.database().ref('typing'),
+        userRef: firebase.auth().currentUser,
+        usersRef: firebase.database().ref('users'),
         notifications: [],
         modal: false,
         firstLoad: true
@@ -30,10 +32,33 @@ class Channels extends React.Component {
 
     addListeners = () => {
         let loadedChannels = [];
+        let shownChannels = [];
         this.state.channelsRef.on('child_added', snap => {
             loadedChannels.push(snap.val());
-            this.setState({ channels: loadedChannels }, () => this.setFirstChannel());
+        });
+        const userChannelRef = firebase.database().ref(`users/${this.state.user.uid}/channels`);
+        userChannelRef.on('child_added', snap => {
+            for(let i = 0; i < loadedChannels.length; i++) {
+                if(snap.val().channelID === loadedChannels[i].id) {
+                    shownChannels.push(loadedChannels[i])
+                }
+            }
+            this.setState({ channels: shownChannels }, () => this.setFirstChannel());
             this.addNotificationListener(snap.key);
+        });
+        this.state.channelsRef.on('child_removed', snap => {
+            for(let i = 0; i < this.state.channels.length; i++) {
+                if(snap.val().id === this.state.channels[i].id) {
+                    this.state.channels.splice(i, 1);
+                };
+            };
+        });
+    };
+
+    removeListeners = () => {
+        this.state.channelsRef.off();
+        this.state.channels.forEach(channel => {
+            this.state.messagesRef.child(channel.id).off();
         });
     };
 
@@ -70,13 +95,29 @@ class Channels extends React.Component {
         this.setState({ notifications });
     }
 
-    removeListeners = () => {
-        this.state.channelsRef.off();
-        this.state.channels.forEach(channel => {
-            this.state.messagesRef.child(channel.id).off();
-        })
+    getNotificationCount = channel => {
+        let count = 0;
+
+        this.state.notifications.forEach(notification => {
+            if (notification.id === channel.id) {
+                count = notification.count;
+            }
+        });
+        if (count > 0) return count;
     }
 
+    clearNotifications = () => {
+        let index = this.state.notifications.findIndex(notification => notification.id ===
+        this.state.channel.id);
+
+        if(index !== -1) {
+            let updatedNotifications = [...this.state.notifications];
+            updatedNotifications[index].total = this.state.notifications[index].lastKnownTotal;
+            updatedNotifications[index].count = 0;
+            this.setState({ notifications: updatedNotifications });
+        }
+    }
+    
     setFirstChannel = () => {
         const firstChannel = this.state.channels[0];
         if(this.state.firstLoad && this.state.channels.length > 0) {
@@ -88,10 +129,12 @@ class Channels extends React.Component {
     }
 
     addChannel = () => {
-        const { channelsRef, channelName, channelDetails, user } = this.state;
+        const { channelsRef, channelName, channelDetails, user, usersRef } = this.state;
         const key = channelsRef.push().key;
+        const keyU = usersRef.child(`${this.state.user.uid}/channels`).push().key;
         const newChannel = {
             id: key,
+            refID: keyU,
             name: channelName,
             details: channelDetails,
             createdBy: {
@@ -102,10 +145,24 @@ class Channels extends React.Component {
         channelsRef
             .child(key)
             .update(newChannel)
+            .catch(err => {
+                console.error(err);
+            });
+        
+        const newChannelU = {
+            channelID: key,
+            name: channelName,
+            thisID: keyU
+        };
+        console.log(newChannelU);
+        usersRef
+            .child(`${this.state.user.uid}/channels`)
+            .child(keyU)
+            .update(newChannelU)
             .then(() => {
                 this.setState({ channelName: '', channelDetails: '' });
                 this.closeModal();
-                console.log('channel added');
+                console.log('Channel added!');
             })
             .catch(err => {
                 console.error(err);
@@ -125,19 +182,10 @@ class Channels extends React.Component {
         this.setState({ [event.target.name]: event.target.value });
     }
 
-    getNotificationCount = channel => {
-        let count = 0;
-
-        this.state.notifications.forEach(notification => {
-            if(notification.id === channel.id) {
-                count  =notification.count;
-            }
-        });
-        if(count > 0) return count;
-    }
+    
 
     displayChannels = channels => (
-        channels.length > 0 &&channels.map(channel => (
+        channels.length > 0 && channels.map(channel => (
             <Menu.Item 
                 key={channel.id}
                 onClick={() => this.changeChannel(channel)}
@@ -149,9 +197,17 @@ class Channels extends React.Component {
                     <Label color="red">{this.getNotificationCount(channel)}</Label>
                 )}
                 # {channel.name}
+                <Icon name="trash" onClick={() => this.removeChannel(channel)} />
             </Menu.Item>
         ))
     )
+
+    removeChannel = (channel) => {
+        if(this.state.user.displayName === channel.createdBy.name) {
+            firebase.database().ref(`channels/${channel.id}`).remove();
+            firebase.database().ref(`users/${this.state.user.uid}/channels/${channel.refID}`).remove();
+        }
+    };
 
     changeChannel = channel => {
         this.setActiveChannel(channel);
@@ -165,17 +221,7 @@ class Channels extends React.Component {
         this.setState({ channel });
     }
 
-    clearNotifications = () => {
-        let index = this.state.notifications.findIndex(notification => notification.id ===
-        this.state.channel.id);
-
-        if(index !== -1) {
-            let updatedNotifications = [...this.state.notifications];
-            updatedNotifications[index].total = this.state.notifications[index].lastKnownTotal;
-            updatedNotifications[index].count = 0;
-            this.setState({ notifications: updatedNotifications });
-        }
-    }
+    
 
     setActiveChannel = channel => {
         this.setState({ activeChannel: channel.id });
