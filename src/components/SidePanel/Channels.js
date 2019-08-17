@@ -3,11 +3,13 @@ import firebase from '../../firebase';
 import { connect } from 'react-redux';
 import { setCurrentChannel, setPrivateChannel } from '../../actions';
 import { Menu, Icon, Modal, Form, Input, Button, Label } from 'semantic-ui-react';
+import UserInvite from './UserInvite';
 
 class Channels extends React.Component {
     state = {
         activeChannel: "",
         user: this.props.currentUser,
+        users: [],
         channel: null,
         channels: [],
         channelName: "",
@@ -19,6 +21,7 @@ class Channels extends React.Component {
         usersRef: firebase.database().ref('users'),
         notifications: [],
         modal: false,
+        invModal: false,
         firstLoad: true
     }
 
@@ -46,6 +49,7 @@ class Channels extends React.Component {
             this.setState({ channels: shownChannels }, () => this.setFirstChannel());
             this.addNotificationListener(snap.key);
         });
+
         this.state.channelsRef.on('child_removed', snap => {
             for(let i = 0; i < this.state.channels.length; i++) {
                 if(snap.val().id === this.state.channels[i].id) {
@@ -53,6 +57,12 @@ class Channels extends React.Component {
                 };
             };
         });
+
+        let usersArray = [];
+        this.state.usersRef.on('child_added', snap => {
+            usersArray.push(snap.val());
+        });
+        this.setState({ users: usersArray });
     };
 
     removeListeners = () => {
@@ -60,6 +70,7 @@ class Channels extends React.Component {
         this.state.channels.forEach(channel => {
             this.state.messagesRef.child(channel.id).off();
         });
+        this.state.usersRef.off();
     };
 
     addNotificationListener = channelId => {
@@ -182,8 +193,6 @@ class Channels extends React.Component {
         this.setState({ [event.target.name]: event.target.value });
     }
 
-    
-
     displayChannels = channels => (
         channels.length > 0 && channels.map(channel => (
             <Menu.Item 
@@ -198,9 +207,36 @@ class Channels extends React.Component {
                 )}
                 # {channel.name}
                 <Icon name="trash" onClick={() => this.removeChannel(channel)} />
+                <Icon name="user plus" onClick={() => this.openInviteModal()} />
             </Menu.Item>
         ))
     )
+
+    displayUserInvitations = users => (
+        users.map(inviteUser => (
+            <UserInvite
+                avatar={inviteUser.avatar}
+                username={inviteUser.name}
+                onClick={this.onClick}
+            />
+        ))
+    )
+
+    onClick = () => {
+        
+    }
+
+    handleInviteSubmit = () => {
+
+    }
+
+    openInviteModal = () => {
+        this.setState({ invModal: true });
+    }
+
+    closeInviteModal = () => {
+        this.setState({ invModal: false });
+    }
 
     removeChannel = (channel) => {
         if(this.state.user.displayName === channel.createdBy.name) {
@@ -236,55 +272,71 @@ class Channels extends React.Component {
     }
 
     render() {
-        const { channels, modal } = this.state;
+        const { channels, modal, invModal, users} = this.state;
 
         return (
             <React.Fragment>
-            <Menu.Menu className="menu" >
-                <Menu.Item>
-                    <span>
-                        <Icon name="exchange" /> CHANNELS
-                    </span>{" "}
-                    ({ channels.length }) <Icon name="add" onClick={this.openModal} />
-                </Menu.Item>
-                {this.displayChannels(channels)}
-            </Menu.Menu>
+                <Menu.Menu className="menu" >
+                    <Menu.Item>
+                        <span>
+                            <Icon name="exchange" /> CHANNELS
+                        </span>{" "}
+                        ({ channels.length }) <Icon name="add" onClick={this.openModal} />
+                    </Menu.Item>
+                    {this.displayChannels(channels)}
+                </Menu.Menu>
 
-            <Modal basic open={modal} onClose={this.closeModal}>
-                <Modal.Header>Add a Channel</Modal.Header>
-                <Modal.Content>
-                    <Form onSubmit={this.handleSubmit}>
-                        <Form.Field>
-                            <Input
-                                fluid
-                                label="Name of Channel"
-                                name="channelName"
-                                onChange={this.handleChange}
-                            />
-                        </Form.Field>
-                    </Form>
+                <Modal basic open={modal} onClose={this.closeModal}>
+                    <Modal.Header>Add a Channel</Modal.Header>
+                    <Modal.Content>
+                        <Form onSubmit={this.handleSubmit}>
+                            <Form.Field>
+                                <Input
+                                    fluid
+                                    label="Name of Channel"
+                                    name="channelName"
+                                    onChange={this.handleChange}
+                                />
+                            </Form.Field>
+                        </Form>
 
-                    <Form>
-                        <Form.Field>
-                            <Input
-                                fluid
-                                label="About the Channel"
-                                name="channelDetails"
-                                onChange={this.handleChange}
-                            />
-                        </Form.Field>
-                    </Form>
-                </Modal.Content>
+                        <Form>
+                            <Form.Field>
+                                <Input
+                                    fluid
+                                    label="About the Channel"
+                                    name="channelDetails"
+                                    onChange={this.handleChange}
+                                />
+                            </Form.Field>
+                        </Form>
+                    </Modal.Content>
 
-                <Modal.Actions>
-                    <Button color="green" inverted onClick={this.handleSubmit}>
-                        <Icon name="checkmark" /> Add
-                    </Button>
-                    <Button color="red" inverted onClick={this.closeModal}>
-                        <Icon name="checkmark" /> Cancel
-                    </Button>
-                </Modal.Actions>         
-            </Modal>
+                    <Modal.Actions>
+                        <Button color="green" inverted onClick={this.handleSubmit}>
+                            <Icon name="checkmark" /> Add
+                        </Button>
+                        <Button color="red" inverted onClick={this.closeModal}>
+                            <Icon name="checkmark" /> Cancel
+                        </Button>
+                    </Modal.Actions>         
+                </Modal>
+
+                <Modal size='tiny' open={invModal} onClose={this.closeInviteModal}>
+                    <Modal.Header>Invite People</Modal.Header>
+                    <Modal.Content scrolling>
+                        {this.displayUserInvitations(users)}
+                    </Modal.Content>
+
+                    <Modal.Actions>
+                        <Button color="green" inverted onClick={this.handleInviteSubmit}>
+                            <Icon name="checkmark" /> Add
+                        </Button>
+                        <Button color="red" inverted onClick={this.closeInviteModal}>
+                            <Icon name="checkmark" /> Cancel
+                        </Button>
+                    </Modal.Actions>         
+                </Modal>
             </React.Fragment>
         );
     }

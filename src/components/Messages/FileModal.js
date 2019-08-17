@@ -20,7 +20,9 @@ class FileModal extends React.Component {
         const { uploadFile, closeModal } = this.props;
         if(file !== null) {
             if(this.isAuthorized(file.name)) {
+                console.log('H');
                 const metadata = { contentType: mime.lookup(file.name) };
+                console.log(metadata);
                 uploadFile(file, metadata);
                 closeModal();
                 this.clearFile();
